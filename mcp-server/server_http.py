@@ -314,9 +314,49 @@ async def tasks_api(request):
     result = get_tasks(WORK_DIR, status_filter if status_filter else None)
     return JSONResponse(result, headers={
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Methods": "GET, DELETE, OPTIONS",
         "Access-Control-Allow-Headers": "*",
     })
+
+
+async def tasks_api_delete(request):
+    """DELETE endpoint for VS Code extension to delete a task."""
+    task_id = request.path_params.get("task_id", "")
+    if not task_id:
+        # Try query param as fallback
+        task_id = request.query_params.get("id", "")
+    
+    if not task_id:
+        return JSONResponse(
+            {"error": "Task ID is required"},
+            status_code=400,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, DELETE, OPTIONS",
+                "Access-Control-Allow-Headers": "*",
+            }
+        )
+    
+    ok = delete_task(WORK_DIR, task_id)
+    if not ok:
+        return JSONResponse(
+            {"error": f"Task not found: {task_id}"},
+            status_code=404,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, DELETE, OPTIONS",
+                "Access-Control-Allow-Headers": "*",
+            }
+        )
+    
+    return JSONResponse(
+        {"success": True, "message": f"Task deleted: {task_id}"},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
 
 
 async def tasks_options(request):
@@ -324,7 +364,7 @@ async def tasks_options(request):
     from starlette.responses import Response
     return Response(status_code=204, headers={
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Methods": "GET, DELETE, OPTIONS",
         "Access-Control-Allow-Headers": "*",
     })
 
@@ -354,6 +394,7 @@ def create_app():
             Route("/", endpoint=health_check),
             Route("/health", endpoint=health_check),
             Route("/tasks", endpoint=tasks_api, methods=["GET"]),
+            Route("/tasks/{task_id}", endpoint=tasks_api_delete, methods=["DELETE"]),
             Route("/tasks", endpoint=tasks_options, methods=["OPTIONS"]),
             # HTTP JSON-RPC endpoint for Kimi CLI
             Route("/mcp", endpoint=mcp_http_endpoint, methods=["POST"]),
