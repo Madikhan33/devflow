@@ -51,6 +51,10 @@
             {
                 "command": "devflow.openPanel",
                 "title": "DevFlow: Show Task Panel"
+            },
+            {
+                "command": "devflow.setServerUrl",
+                "title": "DevFlow: Set Server URL (Railway)"
             }
         ],
         "menus": {
@@ -61,6 +65,16 @@
                     "group": "navigation"
                 }
             ]
+        },
+        "configuration": {
+            "title": "DevFlow",
+            "properties": {
+                "devflow.serverUrl": {
+                    "type": "string",
+                    "default": "",
+                    "description": "URL of the remote DevFlow MCP server (e.g. https://devflow-production-xxxx.up.railway.app)"
+                }
+            }
         }
     },
     "scripts": {

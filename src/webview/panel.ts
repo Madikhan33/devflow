@@ -1,81 +1,112 @@
 import * as vscode from "vscode";
-import { loadTasks } from "../taskManager";
+import { loadTasks, loadTasksFromRemote } from "../taskManager";
 
 export class DevFlowPanel {
-    public static currentPanel: DevFlowPanel | undefined;
-    private static readonly viewType = "devflow.panel";
+  public static currentPanel: DevFlowPanel | undefined;
+  private static readonly viewType = "devflow.panel";
 
-    private readonly _panel: vscode.WebviewPanel;
-    private readonly _extensionUri: vscode.Uri;
-    private readonly _workDir?: string;
-    private _disposed = false;
+  private readonly _panel: vscode.WebviewPanel;
+  private readonly _extensionUri: vscode.Uri;
+  private readonly _workDir?: string;
+  private readonly _serverUrl?: string;
+  private _disposed = false;
 
-    public static createOrShow(
-        extensionUri: vscode.Uri,
-        workDir?: string
-    ): void {
-        const column = vscode.ViewColumn.Beside;
+  public static createOrShow(
+    extensionUri: vscode.Uri,
+    workDir?: string,
+    serverUrl?: string
+  ): void {
+    const column = vscode.ViewColumn.Beside;
 
-        if (DevFlowPanel.currentPanel) {
-            DevFlowPanel.currentPanel._panel.reveal(column);
-            DevFlowPanel.currentPanel.update();
-            return;
-        }
-
-        const panel = vscode.window.createWebviewPanel(
-            DevFlowPanel.viewType,
-            "DevFlow Tasks",
-            column,
-            {
-                enableScripts: true,
-                retainContextWhenHidden: true,
-                localResourceRoots: [vscode.Uri.joinPath(extensionUri, "src", "webview", "ui")],
-            }
-        );
-
-        DevFlowPanel.currentPanel = new DevFlowPanel(panel, extensionUri, workDir);
+    if (DevFlowPanel.currentPanel) {
+      DevFlowPanel.currentPanel._panel.reveal(column);
+      DevFlowPanel.currentPanel.update();
+      return;
     }
 
-    private constructor(
-        panel: vscode.WebviewPanel,
-        extensionUri: vscode.Uri,
-        workDir?: string
-    ) {
-        this._panel = panel;
-        this._extensionUri = extensionUri;
-        this._workDir = workDir;
+    const panel = vscode.window.createWebviewPanel(
+      DevFlowPanel.viewType,
+      "DevFlow Tasks",
+      column,
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true,
+        localResourceRoots: [vscode.Uri.joinPath(extensionUri, "src", "webview", "ui")],
+      }
+    );
 
-        this._panel.webview.html = this._getHtml();
-        this.update();
+    DevFlowPanel.currentPanel = new DevFlowPanel(panel, extensionUri, workDir, serverUrl);
+  }
 
-        this._panel.onDidDispose(() => {
-            this._disposed = true;
-            DevFlowPanel.currentPanel = undefined;
+  private constructor(
+    panel: vscode.WebviewPanel,
+    extensionUri: vscode.Uri,
+    workDir?: string,
+    serverUrl?: string
+  ) {
+    this._panel = panel;
+    this._extensionUri = extensionUri;
+    this._workDir = workDir;
+    this._serverUrl = serverUrl;
+
+    this._panel.webview.html = this._getHtml();
+    this.update();
+
+    this._panel.onDidDispose(() => {
+      this._disposed = true;
+      DevFlowPanel.currentPanel = undefined;
+    });
+  }
+
+  public update(): void {
+    if (this._disposed) return;
+
+    const dir =
+      this._workDir ||
+      vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+
+    // Load local tasks
+    let localTasks: any[] = [];
+    let lastUpdated = new Date().toISOString();
+    if (dir) {
+      try {
+        const data = loadTasks(dir);
+        localTasks = data.tasks;
+        lastUpdated = data.lastUpdated;
+      } catch {
+        // ignore
+      }
+    }
+
+    // If server URL configured, merge remote tasks
+    if (this._serverUrl) {
+      loadTasksFromRemote(this._serverUrl).then((remoteData) => {
+        const localIds = new Set(localTasks.map(t => t.id));
+        const uniqueRemote = remoteData.tasks.filter(t => !localIds.has(t.id));
+        const merged = [...localTasks, ...uniqueRemote];
+        this._panel.webview.postMessage({
+          type: "update",
+          tasks: merged,
+          lastUpdated,
         });
+      }).catch(() => {
+        this._panel.webview.postMessage({
+          type: "update",
+          tasks: localTasks,
+          lastUpdated,
+        });
+      });
+    } else {
+      this._panel.webview.postMessage({
+        type: "update",
+        tasks: localTasks,
+        lastUpdated,
+      });
     }
+  }
 
-    public update(): void {
-        if (this._disposed) return;
-
-        const dir =
-            this._workDir ||
-            vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        if (!dir) return;
-
-        try {
-            const data = loadTasks(dir);
-            this._panel.webview.postMessage({
-                type: "update",
-                tasks: data.tasks,
-                lastUpdated: data.lastUpdated,
-            });
-        } catch {
-            // ignore read errors
-        }
-    }
-
-    private _getHtml(): string {
-        return /* html */ `<!DOCTYPE html>
+  private _getHtml(): string {
+    return /* html */ `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -592,5 +623,5 @@ export class DevFlowPanel {
   </script>
 </body>
 </html>`;
-    }
+  }
 }

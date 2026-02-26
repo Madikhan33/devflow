@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { loadTasks, type Task, type TaskStatus } from "./taskManager";
+import { loadTasks, loadTasksFromRemote, type Task, type TaskStatus, type TasksFile } from "./taskManager";
 
 // ── Icons per status ─────────────────────────────────────────────────────
 
@@ -22,12 +22,13 @@ const STATUS_LABELS: Record<TaskStatus, string> = {
 class TaskTreeItem extends vscode.TreeItem {
     constructor(
         public readonly task: Task,
-        collapsible: vscode.TreeItemCollapsibleState
+        collapsible: vscode.TreeItemCollapsibleState,
+        public readonly isRemote: boolean = false
     ) {
         super(task.title, collapsible);
 
-        this.id = task.id;
-        this.description = task.description || "";
+        this.id = (isRemote ? "remote-" : "local-") + task.id;
+        this.description = isRemote ? `🌐 ${task.description || ""}` : (task.description || "");
         this.tooltip = this.buildTooltip();
         this.iconPath = new vscode.ThemeIcon(STATUS_ICONS[task.status]);
         this.contextValue = `task-${task.status}`;
@@ -36,6 +37,9 @@ class TaskTreeItem extends vscode.TreeItem {
     private buildTooltip(): vscode.MarkdownString {
         const md = new vscode.MarkdownString();
         md.appendMarkdown(`**${this.task.title}**\n\n`);
+        if (this.isRemote) {
+            md.appendMarkdown(`🌐 *Remote task (Railway)*\n\n`);
+        }
         if (this.task.description) {
             md.appendMarkdown(`${this.task.description}\n\n`);
         }
@@ -78,10 +82,16 @@ export class TaskTreeProvider
     private _onDidChangeTreeData = new vscode.EventEmitter<void>();
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
-    private tasks: Task[] = [];
+    private tasks: (Task & { _remote?: boolean })[] = [];
+    private serverUrl?: string;
 
-    constructor(private workDir?: string) {
+    constructor(private workDir?: string, serverUrl?: string) {
+        this.serverUrl = serverUrl;
         this.loadData();
+    }
+
+    setServerUrl(url?: string): void {
+        this.serverUrl = url;
     }
 
     refresh(): void {
@@ -93,16 +103,36 @@ export class TaskTreeProvider
         const dir =
             this.workDir ||
             vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        if (!dir) {
-            this.tasks = [];
-            return;
+
+        // Load local tasks
+        let localTasks: Task[] = [];
+        if (dir) {
+            try {
+                const data = loadTasks(dir);
+                localTasks = data.tasks;
+            } catch {
+                // ignore
+            }
         }
-        try {
-            const data = loadTasks(dir);
-            this.tasks = data.tasks;
-        } catch {
-            this.tasks = [];
+
+        // Load remote tasks (async, will trigger a second refresh)
+        if (this.serverUrl) {
+            loadTasksFromRemote(this.serverUrl).then((remoteData) => {
+                const remoteTasks = remoteData.tasks.map(t => ({ ...t, _remote: true }));
+                const localIds = new Set(localTasks.map(t => t.id));
+                // Merge: remote tasks that don't exist locally
+                const uniqueRemote = remoteTasks.filter(t => !localIds.has(t.id));
+                this.tasks = [...localTasks, ...uniqueRemote];
+                this._onDidChangeTreeData.fire();
+            }).catch(() => {
+                // On error, just use local tasks
+                this.tasks = localTasks;
+                this._onDidChangeTreeData.fire();
+            });
         }
+
+        // Immediately show local tasks (remote will arrive later)
+        this.tasks = localTasks;
     }
 
     getTreeItem(element: TaskTreeItem | StatusGroupItem): vscode.TreeItem {
@@ -132,7 +162,7 @@ export class TaskTreeProvider
             return this.tasks
                 .filter((t) => t.status === element.status)
                 .map(
-                    (t) => new TaskTreeItem(t, vscode.TreeItemCollapsibleState.None)
+                    (t) => new TaskTreeItem(t, vscode.TreeItemCollapsibleState.None, !!(t as any)._remote)
                 );
         }
 

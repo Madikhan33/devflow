@@ -105,6 +105,27 @@ async def health_check(request):
     return JSONResponse({"status": "ok", "service": "devflow-mcp"})
 
 
+async def tasks_api(request):
+    """REST API endpoint for VS Code extension to fetch tasks."""
+    status_filter = request.query_params.get("status", None)
+    result = get_tasks(WORK_DIR, status_filter if status_filter else None)
+    return JSONResponse(result, headers={
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "*",
+    })
+
+
+async def tasks_options(request):
+    """Handle CORS preflight."""
+    from starlette.responses import Response
+    return Response(status_code=204, headers={
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "*",
+    })
+
+
 def create_app():
     transport = SseServerTransport("/messages/")
 
@@ -120,6 +141,8 @@ def create_app():
         routes=[
             Route("/", endpoint=health_check),
             Route("/health", endpoint=health_check),
+            Route("/tasks", endpoint=tasks_api, methods=["GET"]),
+            Route("/tasks", endpoint=tasks_options, methods=["OPTIONS"]),
             Route("/sse", endpoint=handle_sse),
             Mount("/messages/", app=transport.handle_post_message),
         ]

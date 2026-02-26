@@ -53,6 +53,44 @@ export function loadTasks(dir: string): TasksFile {
     }
 }
 
+export async function loadTasksFromRemote(serverUrl: string): Promise<TasksFile> {
+    try {
+        const url = serverUrl.replace(/\/+$/, "") + "/tasks";
+        const https = await import("https");
+        const http = await import("http");
+        const mod = url.startsWith("https") ? https : http;
+
+        return new Promise((resolve) => {
+            const req = mod.get(url, { timeout: 5000 }, (res: any) => {
+                let body = "";
+                res.on("data", (chunk: string) => { body += chunk; });
+                res.on("end", () => {
+                    try {
+                        const data = JSON.parse(body);
+                        // Server returns { summary: {...}, tasks: [...] }
+                        resolve({
+                            version: 1,
+                            tasks: data.tasks || [],
+                            lastUpdated: now(),
+                        });
+                    } catch {
+                        resolve({ version: 1, tasks: [], lastUpdated: now() });
+                    }
+                });
+            });
+            req.on("error", () => {
+                resolve({ version: 1, tasks: [], lastUpdated: now() });
+            });
+            req.on("timeout", () => {
+                req.destroy();
+                resolve({ version: 1, tasks: [], lastUpdated: now() });
+            });
+        });
+    } catch {
+        return { version: 1, tasks: [], lastUpdated: now() };
+    }
+}
+
 export function saveTasks(dir: string, data: TasksFile): void {
     data.lastUpdated = now();
     const filePath = tasksPath(dir);
