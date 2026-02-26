@@ -1,0 +1,10 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "mcp-server/Dockerfile"
+watchPatterns = ["mcp-server/**"]
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
