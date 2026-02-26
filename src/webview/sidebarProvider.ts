@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { loadTasks, loadTasksFromRemote, deleteTask, type Task } from "../taskManager";
+import { loadTasks, loadTasksFromRemote, deleteTask, deleteTaskFromRemote, type Task } from "../taskManager";
 
 export class DevFlowSidebarProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = "devflow.tasks";
@@ -36,10 +36,18 @@ export class DevFlowSidebarProvider implements vscode.WebviewViewProvider {
     // Handle messages from sidebar webview
     webviewView.webview.onDidReceiveMessage((msg) => {
       if (msg.type === "deleteTask" && msg.taskId) {
-        const dir = this._workDir || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        if (dir) {
-          deleteTask(dir, msg.taskId);
-          this.refresh();
+        if (this._serverUrl) {
+          // Delete from remote server
+          deleteTaskFromRemote(this._serverUrl, msg.taskId).then(() => {
+            this.refresh();
+          });
+        } else {
+          // Delete locally
+          const dir = this._workDir || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+          if (dir) {
+            deleteTask(dir, msg.taskId);
+            this.refresh();
+          }
         }
       } else if (msg.type === "addTask") {
         vscode.commands.executeCommand("devflow.addTask");

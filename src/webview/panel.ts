@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { loadTasks, loadTasksFromRemote, deleteTask } from "../taskManager";
+import { loadTasks, loadTasksFromRemote, deleteTask, deleteTaskFromRemote } from "../taskManager";
 
 export class DevFlowPanel {
   public static currentPanel: DevFlowPanel | undefined;
@@ -60,13 +60,24 @@ export class DevFlowPanel {
     // Handle messages from the webview (e.g. delete task)
     this._panel.webview.onDidReceiveMessage((message) => {
       if (message.type === 'deleteTask' && message.taskId) {
-        const dir = this._workDir || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        if (dir) {
-          const deleted = deleteTask(dir, message.taskId);
-          if (deleted) {
-            vscode.window.showInformationMessage(`DevFlow: Задача удалена`);
+        if (this._serverUrl) {
+          // Delete from remote server
+          deleteTaskFromRemote(this._serverUrl, message.taskId).then((deleted) => {
+            if (deleted) {
+              vscode.window.showInformationMessage(`DevFlow: Задача удалена`);
+            }
+            this.update();
+          });
+        } else {
+          // Delete locally
+          const dir = this._workDir || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+          if (dir) {
+            const deleted = deleteTask(dir, message.taskId);
+            if (deleted) {
+              vscode.window.showInformationMessage(`DevFlow: Задача удалена`);
+            }
+            this.update();
           }
-          this.update();
         }
       }
     });

@@ -186,3 +186,41 @@ export function deleteTask(dir: string, id: string): boolean {
     saveTasks(dir, data);
     return true;
 }
+
+export async function deleteTaskFromRemote(serverUrl: string, id: string): Promise<boolean> {
+    try {
+        const url = serverUrl.replace(/\/+$/, "") + "/tasks/" + id;
+        const https = await import("https");
+        const http = await import("http");
+        const mod = url.startsWith("https") ? https : http;
+
+        return new Promise((resolve) => {
+            const req = mod.request(
+                url,
+                { method: "DELETE", timeout: 5000 },
+                (res: any) => {
+                    let body = "";
+                    res.on("data", (chunk: string) => { body += chunk; });
+                    res.on("end", () => {
+                        try {
+                            const data = JSON.parse(body);
+                            resolve(data.success === true);
+                        } catch {
+                            resolve(false);
+                        }
+                    });
+                }
+            );
+            req.on("error", () => {
+                resolve(false);
+            });
+            req.on("timeout", () => {
+                req.destroy();
+                resolve(false);
+            });
+            req.end();
+        });
+    } catch {
+        return false;
+    }
+}
