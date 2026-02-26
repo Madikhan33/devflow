@@ -111,6 +111,203 @@ async def health_check(request):
     return JSONResponse({"status": "ok", "service": "devflow-mcp"})
 
 
+# ── HTTP JSON-RPC endpoint for Kimi CLI ───────────────────────────────────
+async def mcp_http_endpoint(request):
+    """HTTP JSON-RPC endpoint for MCP clients (Kimi CLI)."""
+    import json
+    from mcp.types import JSONRPCRequest, JSONRPCResponse, JSONRPCError
+    
+    try:
+        body = await request.body()
+        data = json.loads(body)
+        
+        # Handle JSON-RPC request
+        jsonrpc_version = data.get("jsonrpc", "2.0")
+        method = data.get("method", "")
+        params = data.get("params", {})
+        request_id = data.get("id")
+        
+        # Handle initialize method
+        if method == "initialize":
+            result = {
+                "protocolVersion": "2024-11-05",
+                "serverInfo": {"name": "DevFlow", "version": "0.1.0"},
+                "capabilities": {
+                    "tools": {},
+                    "logging": {}
+                }
+            }
+            return JSONResponse({
+                "jsonrpc": "2.0",
+                "result": result,
+                "id": request_id
+            })
+        
+        # Handle tools/list method
+        elif method == "tools/list":
+            result = {
+                "tools": [
+                    {
+                        "name": "get_all_tasks",
+                        "description": "Get all tasks from the workspace. Optionally filter by status: pending, in_progress, done, snoozed.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "status": {"type": "string", "description": "Optional status filter"}
+                            }
+                        }
+                    },
+                    {
+                        "name": "add_new_task",
+                        "description": "Add a new task to the task list. Use when you discover new work that needs to be done.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "title": {"type": "string", "description": "Task title"},
+                                "description": {"type": "string", "description": "Optional task description"}
+                            },
+                            "required": ["title"]
+                        }
+                    },
+                    {
+                        "name": "mark_task_started",
+                        "description": "Mark a task as in progress. Use when you begin working on a task.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "task_id": {"type": "string", "description": "Task ID to start"}
+                            },
+                            "required": ["task_id"]
+                        }
+                    },
+                    {
+                        "name": "mark_task_complete",
+                        "description": "Mark a task as 100% done. Only use when the task is fully completed.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "task_id": {"type": "string", "description": "Task ID to complete"}
+                            },
+                            "required": ["task_id"]
+                        }
+                    },
+                    {
+                        "name": "snooze_a_task",
+                        "description": "Postpone a task to a future date (YYYY-MM-DD). Use when a task cannot be finished now.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "task_id": {"type": "string", "description": "Task ID to snooze"},
+                                "date": {"type": "string", "description": "Date to snooze until (YYYY-MM-DD)"}
+                            },
+                            "required": ["task_id", "date"]
+                        }
+                    },
+                    {
+                        "name": "remove_task",
+                        "description": "Permanently delete a task. Use only for duplicate or invalid tasks.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "task_id": {"type": "string", "description": "Task ID to delete"}
+                            },
+                            "required": ["task_id"]
+                        }
+                    }
+                ]
+            }
+            return JSONResponse({
+                "jsonrpc": "2.0",
+                "result": result,
+                "id": request_id
+            })
+        
+        # Handle tools/call method
+        elif method == "tools/call":
+            tool_name = params.get("name", "")
+            tool_args = params.get("arguments", {})
+            
+            # Map tool names to functions
+            if tool_name == "get_all_tasks":
+                status = tool_args.get("status", "")
+                result = get_tasks(WORK_DIR, status if status else None)
+                content = [{"type": "text", "text": json.dumps(result, indent=2, ensure_ascii=False)}]
+            
+            elif tool_name == "add_new_task":
+                title = tool_args.get("title", "")
+                description = tool_args.get("description", "")
+                task = add_task(WORK_DIR, title, description if description else None)
+                content = [{"type": "text", "text": f"✅ Task added: [{task['id']}] {task['title']}"}]
+            
+            elif tool_name == "mark_task_started":
+                task_id = tool_args.get("task_id", "")
+                task = start_task(WORK_DIR, task_id)
+                if not task:
+                    content = [{"type": "text", "text": f"❌ Task not found: {task_id}"}]
+                else:
+                    content = [{"type": "text", "text": f"🚀 Task started: [{task['id']}] {task['title']}"}]
+            
+            elif tool_name == "mark_task_complete":
+                task_id = tool_args.get("task_id", "")
+                task = complete_task(WORK_DIR, task_id)
+                if not task:
+                    content = [{"type": "text", "text": f"❌ Task not found: {task_id}"}]
+                else:
+                    content = [{"type": "text", "text": f"✅ Task completed: [{task['id']}] {task['title']}"}]
+            
+            elif tool_name == "snooze_a_task":
+                task_id = tool_args.get("task_id", "")
+                date = tool_args.get("date", "")
+                task = snooze_task(WORK_DIR, task_id, date)
+                if not task:
+                    content = [{"type": "text", "text": f"❌ Task not found: {task_id}"}]
+                else:
+                    content = [{"type": "text", "text": f"😴 Task snoozed until {date}: [{task['id']}] {task['title']}"}]
+            
+            elif tool_name == "remove_task":
+                task_id = tool_args.get("task_id", "")
+                ok = delete_task(WORK_DIR, task_id)
+                if not ok:
+                    content = [{"type": "text", "text": f"❌ Task not found: {task_id}"}]
+                else:
+                    content = [{"type": "text", "text": f"🗑️ Task deleted: {task_id}"}]
+            
+            else:
+                content = [{"type": "text", "text": f"Unknown tool: {tool_name}"}]
+            
+            return JSONResponse({
+                "jsonrpc": "2.0",
+                "result": {"content": content},
+                "id": request_id
+            })
+        
+        # Unknown method
+        else:
+            return JSONResponse({
+                "jsonrpc": "2.0",
+                "error": {"code": -32601, "message": f"Method not found: {method}"},
+                "id": request_id
+            })
+    
+    except Exception as e:
+        import traceback
+        return JSONResponse({
+            "jsonrpc": "2.0",
+            "error": {"code": -32603, "message": str(e)},
+            "id": data.get("id") if isinstance(data, dict) else None
+        })
+
+
+async def mcp_http_options(request):
+    """Handle CORS preflight for /mcp."""
+    from starlette.responses import Response
+    return Response(status_code=204, headers={
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, Mcp-Session-Id",
+    })
+
+
 async def tasks_api(request):
     """REST API endpoint for VS Code extension to fetch tasks."""
     status_filter = request.query_params.get("status", None)
@@ -158,6 +355,9 @@ def create_app():
             Route("/health", endpoint=health_check),
             Route("/tasks", endpoint=tasks_api, methods=["GET"]),
             Route("/tasks", endpoint=tasks_options, methods=["OPTIONS"]),
+            # HTTP JSON-RPC endpoint for Kimi CLI
+            Route("/mcp", endpoint=mcp_http_endpoint, methods=["POST"]),
+            Route("/mcp", endpoint=mcp_http_options, methods=["OPTIONS"]),
             # SSE Endpoints for MCP Clients like Kimi
             Mount("/sse", app=sse_app),
             Mount("/messages/", app=sse_transport.handle_post_message),
@@ -178,6 +378,7 @@ def create_app():
 if __name__ == "__main__":
     print(f"🚀 DevFlow MCP Server starting on port {PORT}")
     print(f"📁 Working directory: {WORK_DIR}")
+    print(f"🔗 MCP HTTP endpoint: http://0.0.0.0:{PORT}/mcp")
     print(f"🔗 MCP SSE endpoint: http://0.0.0.0:{PORT}/sse")
     print(f"💚 Health check: http://0.0.0.0:{PORT}/health")
 
