@@ -1,0 +1,25 @@
+{
+  "name": "@madik/devflow-mcp",
+  "version": "0.1.0",
+  "description": "AI-driven task management via MCP protocol",
+  "main": "server.py",
+  "scripts": {
+    "start": "python server.py",
+    "docker:build": "docker build -t devflow-mcp .",
+    "docker:run": "docker run -v $(pwd):/workspace devflow-mcp --dir /workspace"
+  },
+  "keywords": [
+    "mcp",
+    "task-manager",
+    "ai",
+    "agent",
+    "devflow"
+  ],
+  "author": "madik",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/madik/devflow.git",
+    "directory": "mcp-server"
+  }
+}

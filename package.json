@@ -1,0 +1,84 @@
+{
+    "name": "devflow",
+    "displayName": "DevFlow",
+    "description": "AI-driven task management via MCP protocol. Watch your AI agent work in real-time.",
+    "version": "0.1.0",
+    "publisher": "devflow",
+    "license": "MIT",
+    "engines": {
+        "vscode": "^1.74.0"
+    },
+    "categories": [
+        "AI",
+        "Other"
+    ],
+    "activationEvents": [
+        "onStartupFinished",
+        "onCommand:devflow.refresh",
+        "onCommand:devflow.addTask",
+        "onCommand:devflow.openPanel"
+    ],
+    "main": "./dist/extension.js",
+    "contributes": {
+        "viewsContainers": {
+            "activitybar": [
+                {
+                    "id": "devflow",
+                    "title": "DevFlow",
+                    "icon": "$(tasklist)"
+                }
+            ]
+        },
+        "views": {
+            "devflow": [
+                {
+                    "id": "devflow.tasks",
+                    "name": "Tasks",
+                    "type": "tree"
+                }
+            ]
+        },
+        "commands": [
+            {
+                "command": "devflow.refresh",
+                "title": "DevFlow: Refresh Tasks",
+                "icon": "$(refresh)"
+            },
+            {
+                "command": "devflow.addTask",
+                "title": "DevFlow: Add Task"
+            },
+            {
+                "command": "devflow.openPanel",
+                "title": "DevFlow: Show Task Panel"
+            }
+        ],
+        "menus": {
+            "view/title": [
+                {
+                    "command": "devflow.refresh",
+                    "when": "view == devflow.tasks",
+                    "group": "navigation"
+                }
+            ]
+        }
+    },
+    "scripts": {
+        "compile": "node esbuild.mjs",
+        "watch": "node esbuild.mjs --watch",
+        "package": "vsce package"
+    },
+    "dependencies": {
+        "uuid": "^9.0.0"
+    },
+    "overrides": {
+        "@types/vscode": "^1.74.0"
+    },
+    "devDependencies": {
+        "@types/node": "^22.0.0",
+        "@types/vscode": "^1.74.0",
+        "@vscode/vsce": "^3.7.1",
+        "esbuild": "^0.25.0",
+        "typescript": "^5.7.0"
+    }
+}

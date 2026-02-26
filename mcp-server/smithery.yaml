@@ -1,0 +1,41 @@
+name: devflow
+description: AI-driven task management via MCP protocol. Track your AI agent's work with real-time task updates.
+version: 0.1.0
+homepage: https://github.com/madik/devflow
+repository:
+  type: git
+  url: https://github.com/madik/devflow.git
+license: MIT
+maintainers:
+  - madik
+
+# Smithery configuration
+startCommand:
+  type: stdio
+  configSchema:
+    # JSON Schema for configuration
+    type: object
+    required:
+      - workingDir
+    properties:
+      workingDir:
+        type: string
+        description: Working directory where .tasks.json will be stored
+        default: "."
+  commandFunction: |
+    (config) => ({
+      command: "python",
+      args: [
+        "server.py",
+        "--dir",
+        config.workingDir
+      ],
+      env: {}
+    })
+
+# Alternative: direct command specification
+# command: python
+# args:
+#   - server.py
+#   - --dir
+#   - "."
