@@ -66,7 +66,7 @@ def get_all_tasks(status: str = "") -> str:
 def add_new_task(title: str, description: str = "") -> str:
     """Add a new task to the task list. Use when you discover new work that needs to be done."""
     task = add_task(WORK_DIR, title, description if description else None)
-    return f"✅ Task added: [{task['id']}] {task['title']}"
+    return f" Task added: [{task['id']}] {task['title']}"
 
 
 @mcp.tool()
@@ -74,8 +74,8 @@ def mark_task_started(task_id: str) -> str:
     """Mark a task as in progress. Use when you begin working on a task."""
     task = start_task(WORK_DIR, task_id)
     if not task:
-        return f"❌ Task not found: {task_id}"
-    return f"🚀 Task started: [{task['id']}] {task['title']}"
+        return f"Task not found: {task_id}"
+    return f"Task started: [{task['id']}] {task['title']}"
 
 
 @mcp.tool()
@@ -83,8 +83,8 @@ def mark_task_complete(task_id: str) -> str:
     """Mark a task as 100% done. Only use when the task is fully completed."""
     task = complete_task(WORK_DIR, task_id)
     if not task:
-        return f"❌ Task not found: {task_id}"
-    return f"✅ Task completed: [{task['id']}] {task['title']}"
+        return f"Task not found: {task_id}"
+    return f"Task completed: [{task['id']}] {task['title']}"
 
 
 @mcp.tool()
@@ -92,8 +92,8 @@ def snooze_a_task(task_id: str, date: str) -> str:
     """Postpone a task to a future date (YYYY-MM-DD). Use when a task cannot be finished now."""
     task = snooze_task(WORK_DIR, task_id, date)
     if not task:
-        return f"❌ Task not found: {task_id}"
-    return f"😴 Task snoozed until {date}: [{task['id']}] {task['title']}"
+        return f"Task not found: {task_id}"
+    return f"Task snoozed until {date}: [{task['id']}] {task['title']}"
 
 
 @mcp.tool()
@@ -101,8 +101,8 @@ def remove_task(task_id: str) -> str:
     """Permanently delete a task. Use only for duplicate or invalid tasks."""
     ok = delete_task(WORK_DIR, task_id)
     if not ok:
-        return f"❌ Task not found: {task_id}"
-    return f"🗑️ Task deleted: {task_id}"
+        return f"Task not found: {task_id}"
+    return f"Task deleted: {task_id}"
 
 
 # ── Additional HTTP endpoints ─────────────────────────────────────────────
@@ -237,40 +237,40 @@ async def mcp_http_endpoint(request):
                 title = tool_args.get("title", "")
                 description = tool_args.get("description", "")
                 task = add_task(WORK_DIR, title, description if description else None)
-                content = [{"type": "text", "text": f"✅ Task added: [{task['id']}] {task['title']}"}]
+                content = [{"type": "text", "text": f"Task added: [{task['id']}] {task['title']}"}]
             
             elif tool_name == "mark_task_started":
                 task_id = tool_args.get("task_id", "")
                 task = start_task(WORK_DIR, task_id)
                 if not task:
-                    content = [{"type": "text", "text": f"❌ Task not found: {task_id}"}]
+                    content = [{"type": "text", "text": f"Task not found: {task_id}"}]
                 else:
-                    content = [{"type": "text", "text": f"🚀 Task started: [{task['id']}] {task['title']}"}]
+                    content = [{"type": "text", "text": f"Task started: [{task['id']}] {task['title']}"}]
             
             elif tool_name == "mark_task_complete":
                 task_id = tool_args.get("task_id", "")
                 task = complete_task(WORK_DIR, task_id)
                 if not task:
-                    content = [{"type": "text", "text": f"❌ Task not found: {task_id}"}]
+                    content = [{"type": "text", "text": f"Task not found: {task_id}"}]
                 else:
-                    content = [{"type": "text", "text": f"✅ Task completed: [{task['id']}] {task['title']}"}]
+                    content = [{"type": "text", "text": f"Task completed: [{task['id']}] {task['title']}"}]
             
             elif tool_name == "snooze_a_task":
                 task_id = tool_args.get("task_id", "")
                 date = tool_args.get("date", "")
                 task = snooze_task(WORK_DIR, task_id, date)
                 if not task:
-                    content = [{"type": "text", "text": f"❌ Task not found: {task_id}"}]
+                    content = [{"type": "text", "text": f"Task not found: {task_id}"}]
                 else:
-                    content = [{"type": "text", "text": f"😴 Task snoozed until {date}: [{task['id']}] {task['title']}"}]
+                    content = [{"type": "text", "text": f"Task snoozed until {date}: [{task['id']}] {task['title']}"}]
             
             elif tool_name == "remove_task":
                 task_id = tool_args.get("task_id", "")
                 ok = delete_task(WORK_DIR, task_id)
                 if not ok:
-                    content = [{"type": "text", "text": f"❌ Task not found: {task_id}"}]
+                    content = [{"type": "text", "text": f"Task not found: {task_id}"}]
                 else:
-                    content = [{"type": "text", "text": f"🗑️ Task deleted: {task_id}"}]
+                    content = [{"type": "text", "text": f"Task deleted: {task_id}"}]
             
             else:
                 content = [{"type": "text", "text": f"Unknown tool: {tool_name}"}]
@@ -417,11 +417,11 @@ def create_app():
 
 
 if __name__ == "__main__":
-    print(f"🚀 DevFlow MCP Server starting on port {PORT}")
-    print(f"📁 Working directory: {WORK_DIR}")
-    print(f"🔗 MCP HTTP endpoint: http://0.0.0.0:{PORT}/mcp")
-    print(f"🔗 MCP SSE endpoint: http://0.0.0.0:{PORT}/sse")
-    print(f"💚 Health check: http://0.0.0.0:{PORT}/health")
+    print(f"DevFlow MCP Server starting on port {PORT}")
+    print(f"Working directory: {WORK_DIR}")
+    print(f"MCP HTTP endpoint: http://0.0.0.0:{PORT}/mcp")
+    print(f"MCP SSE endpoint: http://0.0.0.0:{PORT}/sse")
+    print(f"Health check: http://0.0.0.0:{PORT}/health")
 
     app = create_app()
     uvicorn.run(app, host="0.0.0.0", port=PORT)
