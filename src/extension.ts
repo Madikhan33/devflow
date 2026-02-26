@@ -5,11 +5,12 @@ import { TaskTreeProvider } from "./taskTreeProvider";
 import { DevFlowPanel } from "./webview/panel";
 import { addTask, loadTasks, loadTasksFromRemote, type TasksFile } from "./taskManager";
 
-// ── Remote server URL config key ─────────────────────────────────────────
-const CONFIG_KEY = "devflow.serverUrl";
+// ── Remote server URL ────────────────────────────────────────────────────
+const REMOTE_SERVER_URL = "https://devflow-production-f9f0.up.railway.app";
 
 function getServerUrl(): string | undefined {
-    return vscode.workspace.getConfiguration().get<string>(CONFIG_KEY);
+    const configUrl = vscode.workspace.getConfiguration().get<string>("devflow.serverUrl");
+    return configUrl || REMOTE_SERVER_URL;
 }
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -24,32 +25,29 @@ export function activate(context: vscode.ExtensionContext): void {
     });
     context.subscriptions.push(treeView);
 
-    // ── File Watcher (для локальных задач) ────────────────────────────────
+    // ── File Watcher (обновление при изменении локального .tasks.json) ────
 
     let tasksFilePath: string | undefined;
-    let lastTaskCount = 0;
     let lastTaskIds = new Set<string>();
 
     if (workspaceFolder) {
         tasksFilePath = path.join(workspaceFolder, ".tasks.json");
         try {
             const data = loadTasks(workspaceFolder);
-            lastTaskCount = data.tasks.length;
             lastTaskIds = new Set(data.tasks.map(t => t.id));
         } catch {
             // ignore
         }
     }
 
-    const onTasksFileChanged = (source: string) => {
+    const onLocalFileChanged = () => {
         if (workspaceFolder) {
             try {
                 const data = loadTasks(workspaceFolder);
                 const currentTaskIds = new Set(data.tasks.map(t => t.id));
-
                 const newTasks = data.tasks.filter(t => !lastTaskIds.has(t.id));
 
-                if (newTasks.length > 0 && source === "external") {
+                if (newTasks.length > 0) {
                     for (const task of newTasks) {
                         vscode.window.showInformationMessage(
                             `DevFlow: AI added task — ${task.title}`
@@ -57,10 +55,9 @@ export function activate(context: vscode.ExtensionContext): void {
                     }
                 }
 
-                lastTaskCount = data.tasks.length;
                 lastTaskIds = currentTaskIds;
             } catch {
-                // ignore read errors
+                // ignore
             }
         }
 
@@ -68,15 +65,17 @@ export function activate(context: vscode.ExtensionContext): void {
         DevFlowPanel.currentPanel?.update();
     };
 
+    // VS Code file watcher
     const watcher = vscode.workspace.createFileSystemWatcher("**/.tasks.json");
-    watcher.onDidChange(() => onTasksFileChanged("external"));
-    watcher.onDidCreate(() => onTasksFileChanged("external"));
+    watcher.onDidChange(() => onLocalFileChanged());
+    watcher.onDidCreate(() => onLocalFileChanged());
     watcher.onDidDelete(() => {
         treeProvider.refresh();
         DevFlowPanel.currentPanel?.update();
     });
     context.subscriptions.push(watcher);
 
+    // Node.js fs.watchFile as backup
     let fsWatcher: fs.StatWatcher | undefined;
     if (tasksFilePath) {
         if (!fs.existsSync(tasksFilePath)) {
@@ -87,11 +86,25 @@ export function activate(context: vscode.ExtensionContext): void {
             }, null, 2), "utf-8");
         }
 
-        fsWatcher = fs.watchFile(tasksFilePath, { interval: 1000 }, (curr, prev) => {
+        fsWatcher = fs.watchFile(tasksFilePath, { interval: 2000 }, (curr, prev) => {
             if (curr.mtime !== prev.mtime || curr.size !== prev.size) {
-                onTasksFileChanged("external");
+                onLocalFileChanged();
             }
         });
+    }
+
+    // ── Remote polling (только проверка изменений, без лишних обновлений) ──
+
+    let remotePollingInterval: ReturnType<typeof setInterval> | undefined;
+
+    if (getServerUrl()) {
+        // Первая загрузка при старте
+        treeProvider.pollRemote();
+
+        // Потом проверяем каждые 5 секунд — UI обновится только если данные изменились
+        remotePollingInterval = setInterval(() => {
+            treeProvider.pollRemote();
+        }, 5000);
     }
 
     // ── Commands ─────────────────────────────────────────────────────────
@@ -99,6 +112,7 @@ export function activate(context: vscode.ExtensionContext): void {
     context.subscriptions.push(
         vscode.commands.registerCommand("devflow.refresh", () => {
             treeProvider.refresh();
+            treeProvider.pollRemote();
             DevFlowPanel.currentPanel?.update();
         })
     );
@@ -122,7 +136,6 @@ export function activate(context: vscode.ExtensionContext): void {
 
             const task = addTask(dir, title);
             lastTaskIds.add(task.id);
-            lastTaskCount++;
             treeProvider.refresh();
             DevFlowPanel.currentPanel?.update();
             vscode.window.showInformationMessage(`DevFlow: Task added — ${title}`);
@@ -145,10 +158,11 @@ export function activate(context: vscode.ExtensionContext): void {
             });
             if (url !== undefined) {
                 await vscode.workspace.getConfiguration().update(
-                    CONFIG_KEY, url || undefined, vscode.ConfigurationTarget.Global
+                    "devflow.serverUrl", url || undefined, vscode.ConfigurationTarget.Global
                 );
                 treeProvider.setServerUrl(url || undefined);
                 treeProvider.refresh();
+                treeProvider.pollRemote();
                 DevFlowPanel.currentPanel?.update();
                 if (url) {
                     vscode.window.showInformationMessage(`DevFlow: Connected to ${url}`);
@@ -174,16 +188,13 @@ export function activate(context: vscode.ExtensionContext): void {
     statusBar.show();
     context.subscriptions.push(statusBar);
 
-    // ── Auto-refresh (поллинг для локальных + удалённых задач) ────────────
-
-    const refreshInterval = setInterval(() => {
-        treeProvider.refresh();
-        DevFlowPanel.currentPanel?.update();
-    }, 3000);
+    // ── Cleanup ──────────────────────────────────────────────────────────
 
     context.subscriptions.push({
         dispose: () => {
-            clearInterval(refreshInterval);
+            if (remotePollingInterval) {
+                clearInterval(remotePollingInterval);
+            }
             if (fsWatcher) {
                 fs.unwatchFile(tasksFilePath || "");
             }

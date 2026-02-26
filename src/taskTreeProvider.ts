@@ -75,6 +75,15 @@ class StatusGroupItem extends vscode.TreeItem {
     }
 }
 
+// ── Helper: create a fingerprint of the tasks list ──────────────────────
+
+function tasksFingerprint(tasks: Task[]): string {
+    return tasks
+        .map(t => `${t.id}:${t.status}`)
+        .sort()
+        .join("|");
+}
+
 // ── Tree Data Provider ───────────────────────────────────────────────────
 
 export class TaskTreeProvider
@@ -84,22 +93,25 @@ export class TaskTreeProvider
 
     private tasks: (Task & { _remote?: boolean })[] = [];
     private serverUrl?: string;
+    private _lastFingerprint = "";
 
     constructor(private workDir?: string, serverUrl?: string) {
         this.serverUrl = serverUrl;
-        this.loadData();
+        this.loadDataSync();
     }
 
     setServerUrl(url?: string): void {
         this.serverUrl = url;
     }
 
+    /** Force refresh (used by file watcher and manual refresh) */
     refresh(): void {
-        this.loadData();
+        this.loadDataSync();
         this._onDidChangeTreeData.fire();
     }
 
-    private loadData(): void {
+    /** Poll remote and only refresh UI if data changed */
+    async pollRemote(): Promise<void> {
         const dir =
             this.workDir ||
             vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -115,24 +127,45 @@ export class TaskTreeProvider
             }
         }
 
-        // Load remote tasks (async, will trigger a second refresh)
+        // Load remote tasks
         if (this.serverUrl) {
-            loadTasksFromRemote(this.serverUrl).then((remoteData) => {
+            try {
+                const remoteData = await loadTasksFromRemote(this.serverUrl);
                 const remoteTasks = remoteData.tasks.map(t => ({ ...t, _remote: true }));
                 const localIds = new Set(localTasks.map(t => t.id));
-                // Merge: remote tasks that don't exist locally
                 const uniqueRemote = remoteTasks.filter(t => !localIds.has(t.id));
-                this.tasks = [...localTasks, ...uniqueRemote];
-                this._onDidChangeTreeData.fire();
-            }).catch(() => {
-                // On error, just use local tasks
-                this.tasks = localTasks;
-                this._onDidChangeTreeData.fire();
-            });
+                const merged = [...localTasks, ...uniqueRemote];
+
+                // Only update UI if something actually changed
+                const newFingerprint = tasksFingerprint(merged);
+                if (newFingerprint !== this._lastFingerprint) {
+                    this.tasks = merged;
+                    this._lastFingerprint = newFingerprint;
+                    this._onDidChangeTreeData.fire();
+                }
+            } catch {
+                // ignore remote errors
+            }
+        }
+    }
+
+    private loadDataSync(): void {
+        const dir =
+            this.workDir ||
+            vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+
+        let localTasks: Task[] = [];
+        if (dir) {
+            try {
+                const data = loadTasks(dir);
+                localTasks = data.tasks;
+            } catch {
+                // ignore
+            }
         }
 
-        // Immediately show local tasks (remote will arrive later)
         this.tasks = localTasks;
+        this._lastFingerprint = tasksFingerprint(localTasks);
     }
 
     getTreeItem(element: TaskTreeItem | StatusGroupItem): vscode.TreeItem {
@@ -143,7 +176,6 @@ export class TaskTreeProvider
         element?: TaskTreeItem | StatusGroupItem
     ): (TaskTreeItem | StatusGroupItem)[] {
         if (!element) {
-            // Root: show status groups
             const statuses: TaskStatus[] = [
                 "in_progress",
                 "pending",
