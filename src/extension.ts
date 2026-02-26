@@ -1,8 +1,7 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
-import { TaskTreeProvider } from "./taskTreeProvider";
-import { DevFlowPanel } from "./webview/panel";
+import { DevFlowSidebarProvider } from "./webview/sidebarProvider";
 import { addTask, loadTasks, loadTasksFromRemote, type TasksFile } from "./taskManager";
 
 // ── Remote server URL ────────────────────────────────────────────────────
@@ -16,14 +15,16 @@ function getServerUrl(): string | undefined {
 export function activate(context: vscode.ExtensionContext): void {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 
-    // ── Tree View ────────────────────────────────────────────────────────
+    // ── Sidebar Webview ──────────────────────────────────────────────────
 
-    const treeProvider = new TaskTreeProvider(workspaceFolder, getServerUrl());
-    const treeView = vscode.window.createTreeView("devflow.tasks", {
-        treeDataProvider: treeProvider,
-        showCollapseAll: true,
-    });
-    context.subscriptions.push(treeView);
+    const sidebarProvider = new DevFlowSidebarProvider(
+        context.extensionUri, workspaceFolder, getServerUrl()
+    );
+    context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider(
+            DevFlowSidebarProvider.viewType, sidebarProvider
+        )
+    );
 
     // ── File Watcher (обновление при изменении локального .tasks.json) ────
 
@@ -61,8 +62,7 @@ export function activate(context: vscode.ExtensionContext): void {
             }
         }
 
-        treeProvider.refresh();
-        DevFlowPanel.currentPanel?.update();
+        sidebarProvider.refresh();
     };
 
     // VS Code file watcher
@@ -70,8 +70,7 @@ export function activate(context: vscode.ExtensionContext): void {
     watcher.onDidChange(() => onLocalFileChanged());
     watcher.onDidCreate(() => onLocalFileChanged());
     watcher.onDidDelete(() => {
-        treeProvider.refresh();
-        DevFlowPanel.currentPanel?.update();
+        sidebarProvider.refresh();
     });
     context.subscriptions.push(watcher);
 
@@ -99,11 +98,11 @@ export function activate(context: vscode.ExtensionContext): void {
 
     if (getServerUrl()) {
         // Первая загрузка при старте
-        treeProvider.pollRemote();
+        sidebarProvider.refresh();
 
-        // Потом проверяем каждые 5 секунд — UI обновится только если данные изменились
+        // Потом проверяем каждые 5 секунд
         remotePollingInterval = setInterval(() => {
-            treeProvider.pollRemote();
+            sidebarProvider.refresh();
         }, 5000);
     }
 
@@ -111,9 +110,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
     context.subscriptions.push(
         vscode.commands.registerCommand("devflow.refresh", () => {
-            treeProvider.refresh();
-            treeProvider.pollRemote();
-            DevFlowPanel.currentPanel?.update();
+            sidebarProvider.refresh();
         })
     );
 
@@ -136,15 +133,8 @@ export function activate(context: vscode.ExtensionContext): void {
 
             const task = addTask(dir, title);
             lastTaskIds.add(task.id);
-            treeProvider.refresh();
-            DevFlowPanel.currentPanel?.update();
+            sidebarProvider.refresh();
             vscode.window.showInformationMessage(`DevFlow: Task added — ${title}`);
-        })
-    );
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand("devflow.openPanel", () => {
-            DevFlowPanel.createOrShow(context.extensionUri, workspaceFolder, getServerUrl());
         })
     );
 
@@ -160,10 +150,8 @@ export function activate(context: vscode.ExtensionContext): void {
                 await vscode.workspace.getConfiguration().update(
                     "devflow.serverUrl", url || undefined, vscode.ConfigurationTarget.Global
                 );
-                treeProvider.setServerUrl(url || undefined);
-                treeProvider.refresh();
-                treeProvider.pollRemote();
-                DevFlowPanel.currentPanel?.update();
+                sidebarProvider.setServerUrl(url || undefined);
+                sidebarProvider.refresh();
                 if (url) {
                     vscode.window.showInformationMessage(`DevFlow: Connected to ${url}`);
                 } else {
@@ -179,12 +167,10 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.StatusBarAlignment.Left,
         100
     );
-    statusBar.command = "devflow.openPanel";
+    statusBar.command = "devflow.refresh";
     const serverUrl = getServerUrl();
     statusBar.text = serverUrl ? "$(tasklist) DevFlow 🌐" : "$(tasklist) DevFlow";
-    statusBar.tooltip = serverUrl
-        ? `DevFlow — Connected to ${serverUrl}`
-        : "Open DevFlow Task Panel";
+    statusBar.tooltip = "DevFlow Tasks";
     statusBar.show();
     context.subscriptions.push(statusBar);
 

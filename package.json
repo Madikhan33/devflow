@@ -15,8 +15,7 @@
     "activationEvents": [
         "onStartupFinished",
         "onCommand:devflow.refresh",
-        "onCommand:devflow.addTask",
-        "onCommand:devflow.openPanel"
+        "onCommand:devflow.addTask"
     ],
     "main": "./dist/extension.js",
     "contributes": {
@@ -34,7 +33,7 @@
                 {
                     "id": "devflow.tasks",
                     "name": "Tasks",
-                    "type": "tree"
+                    "type": "webview"
                 }
             ]
         },
@@ -47,10 +46,6 @@
             {
                 "command": "devflow.addTask",
                 "title": "DevFlow: Add Task"
-            },
-            {
-                "command": "devflow.openPanel",
-                "title": "DevFlow: Show Task Panel"
             },
             {
                 "command": "devflow.setServerUrl",
