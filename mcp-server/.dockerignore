@@ -16,9 +16,8 @@ env/
 .pytest_cache/
 .coverage
 htmlcov/
-.tox/
 .git/
 .gitignore
-README.md
 *.md
 !requirements.txt
+railway.toml

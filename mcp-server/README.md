@@ -1,150 +1,98 @@
-# DevFlow MCP Server
+# DevFlow MCP Server ⚡
 
-[![smithery badge](https://smithery.ai/badge/@madik/devflow)](https://smithery.ai/server/@madik/devflow)
+AI-driven task management via MCP protocol.
 
-AI-driven task management via MCP protocol. Watch your AI agent work in real-time.
+## 🚀 Deploy on Railway
 
-## 🚀 Установка через Smithery (рекомендуется)
+### One-click deploy
 
-```bash
-npx -y @smithery/cli install @madik/devflow --client cursor
-```
+1. Fork this repo
+2. Go to [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub repo**
+3. Set **Root Directory** to `mcp-server`
+4. Railway auto-detects the Dockerfile and deploys
 
-Или для Claude Desktop:
-```bash
-npx -y @smithery/cli install @madik/devflow --client claude
-```
+### Environment Variables (optional)
 
-## 📦 Ручная установка
+| Variable   | Default      | Description                           |
+|------------|-------------|---------------------------------------|
+| `PORT`     | `3000`      | Server port (auto-set by Railway)     |
+| `WORK_DIR` | `/workspace` | Directory for `.tasks.json` storage  |
 
-### Требования
-- Python 3.11+
-- pip или poetry
+### Endpoints
 
-### Установка
+| Path        | Description            |
+|-------------|------------------------|
+| `/`         | Health check (JSON)    |
+| `/health`   | Health check (JSON)    |
+| `/sse`      | SSE endpoint for MCP   |
+| `/messages/` | Message transport     |
 
-**Через pip:**
-```bash
-pip install mcp>=1.26.0
-python server.py --dir /path/to/project
-```
+## 🔧 Connect your AI client
 
-**Через Poetry:**
-```bash
-poetry install
-poetry run python server.py --dir /path/to/project
-```
+After deploying, use the Railway URL as your MCP endpoint:
 
-**Через Docker:**
-```bash
-docker build -t devflow-mcp .
-docker run -v /path/to/project:/workspace devflow-mcp --dir /workspace
-```
+### Claude Desktop (`claude_desktop_config.json`)
 
-## 🔌 Настройка в редакторах
-
-### VS Code / Cursor / Antigravity
-Создай файл `.vscode/mcp.json`:
-```json
-{
-  "servers": {
-    "devflow": {
-      "command": "python",
-      "args": [
-        "path/to/mcp-server/server.py",
-        "--dir", "${workspaceFolder}"
-      ]
-    }
-  }
-}
-```
-
-### Claude Desktop
-`claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
     "devflow": {
-      "command": "python",
-      "args": [
-        "path/to/mcp-server/server.py",
-        "--dir", "/path/to/project"
-      ]
+      "url": "https://YOUR-APP.up.railway.app/sse"
     }
   }
 }
 ```
 
-### Kimi Code CLI
+### VS Code / Cursor (`.vscode/mcp.json`)
+
+```json
+{
+  "servers": {
+    "devflow": {
+      "url": "https://YOUR-APP.up.railway.app/sse"
+    }
+  }
+}
+```
+
+## 🛠️ MCP Tools
+
+| Tool               | Params                 | Description                        |
+|--------------------|------------------------|------------------------------------|
+| `get_all_tasks`    | `status?`              | Get all tasks + statistics         |
+| `add_new_task`     | `title`, `description?`| Add a new task                     |
+| `mark_task_started`| `task_id`              | Start working on a task            |
+| `mark_task_complete`| `task_id`             | Mark task as done                  |
+| `snooze_a_task`    | `task_id`, `date`      | Postpone to a future date          |
+| `remove_task`      | `task_id`              | Delete a task permanently          |
+
+## 🏃 Run locally
+
 ```bash
-kimi mcp add --transport stdio devflow -- python /path/to/server.py --dir "$PWD"
+pip install -r requirements.txt
+python server_http.py
 ```
 
-## 🛠️ Доступные инструменты
+Server starts on `http://localhost:3000/sse`.
 
-| Инструмент | Описание | Параметры |
-|------------|----------|-----------|
-| `get_all_tasks` | Получить все задачи со статистикой | `status` (optional): pending, in_progress, done, snoozed |
-| `add_new_task` | Добавить новую задачу | `title` (required), `description` (optional) |
-| `mark_task_started` | Начать выполнение задачи | `task_id` (required) |
-| `mark_task_complete` | Отметить задачу выполненной | `task_id` (required) |
-| `snooze_a_task` | Отложить задачу | `task_id` (required), `date` (required): YYYY-MM-DD |
-| `remove_task` | Удалить задачу | `task_id` (required) |
-
-## 📝 System Prompt для AI
-
-Добавь это в инструкции к AI:
-
-```
-You have access to DevFlow task manager via MCP.
-
-Rules:
-- Check get_all_tasks() at the start of every session
-- When you begin a task → mark_task_started(task_id)
-- If you discover new work → add_new_task(title)
-- If a task is 100% done → mark_task_complete(task_id)
-- If you can't finish now → snooze_a_task(task_id, "YYYY-MM-DD")
-- Never leave tasks in "in_progress" when you stop
-```
-
-## 📁 Формат данных
-
-Задачи хранятся в файле `.tasks.json`:
+## 📋 Task Schema (`.tasks.json`)
 
 ```json
 {
   "version": 1,
-  "lastUpdated": "2026-02-26T20:00:00Z",
+  "lastUpdated": "2026-01-15T12:00:00Z",
   "tasks": [
     {
       "id": "a1b2c3d4",
-      "title": "Fix bug in auth",
-      "description": "Users can't login with Google",
-      "status": "in_progress",
-      "createdAt": "2026-02-26T10:00:00Z",
-      "completedAt": null,
-      "snoozedUntil": null
+      "title": "Fix build warnings",
+      "description": "Remove unused imports",
+      "status": "pending",
+      "createdAt": "2026-01-15T10:00:00Z"
     }
   ]
 }
 ```
 
-## 🐍 Использование как Python модуль
+## License
 
-```python
-from task_manager import add_task, get_tasks, complete_task
-
-# Добавить задачу
-task = add_task("/path/to/project", "Fix bug", "Description")
-
-# Получить все задачи
-result = get_tasks("/path/to/project")
-print(result['summary'])  # {'total': 5, 'pending': 2, 'in_progress': 1, ...}
-
-# Отметить выполненной
-complete_task("/path/to/project", task['id'])
-```
-
-## 📄 Лицензия
-
-MIT License
+MIT
