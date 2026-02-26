@@ -130,11 +130,16 @@ def create_app():
     transport = SseServerTransport("/messages/")
 
     async def handle_sse(scope, receive, send):
-        """Raw ASGI handler for SSE — avoids request._send issues."""
+        """Raw ASGI handler for SSE connection."""
         async with transport.connect_sse(scope, receive, send) as streams:
             await mcp._mcp_server.run(
                 streams[0], streams[1], mcp._mcp_server.create_initialization_options()
             )
+
+    async def sse_app(scope, receive, send):
+        """Wrapper that only handles GET requests to /sse."""
+        if scope["type"] == "http":
+            await handle_sse(scope, receive, send)
 
     return Starlette(
         routes=[
@@ -142,7 +147,7 @@ def create_app():
             Route("/health", endpoint=health_check),
             Route("/tasks", endpoint=tasks_api, methods=["GET"]),
             Route("/tasks", endpoint=tasks_options, methods=["OPTIONS"]),
-            Mount("/sse", app=handle_sse),
+            Mount("/sse", app=sse_app),
             Mount("/messages/", app=transport.handle_post_message),
         ]
     )
