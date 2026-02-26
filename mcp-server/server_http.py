@@ -1,5 +1,10 @@
 """
-DevFlow MCP Server — HTTP/SSE version for Railway deployment.
+DevFlow MCP Server — Streamable HTTP version for Railway deployment.
+
+Supports:
+  - Streamable HTTP Transport (/mcp) — for Kimi and modern MCP clients
+  - REST API (/tasks) — for VS Code extension
+  - Health check (/health) — for Railway
 
 Railway automatically sets the PORT environment variable.
 """
@@ -11,10 +16,11 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from mcp.server.fastmcp import FastMCP
-from mcp.server.sse import SseServerTransport
 from starlette.applications import Starlette
 from starlette.routing import Mount, Route
 from starlette.responses import JSONResponse
+from starlette.middleware import Middleware
+from starlette.middleware.cors import CORSMiddleware
 import uvicorn
 
 from task_manager import (
@@ -46,6 +52,7 @@ mcp = FastMCP(
         "- snooze_task(id, date) if you can't finish now\n"
         "- delete_task(id) only for duplicates or invalid tasks"
     ),
+    stateless_http=True,
 )
 
 
@@ -99,7 +106,7 @@ def remove_task(task_id: str) -> str:
     return f"🗑️ Task deleted: {task_id}"
 
 
-# ── HTTP Server ───────────────────────────────────────────────────────────
+# ── Additional HTTP endpoints ─────────────────────────────────────────────
 async def health_check(request):
     """Health check endpoint for Railway."""
     return JSONResponse({"status": "ok", "service": "devflow-mcp"})
@@ -127,36 +134,39 @@ async def tasks_options(request):
 
 
 def create_app():
-    transport = SseServerTransport("/messages/")
+    """Create a Starlette app with Streamable HTTP MCP + REST endpoints."""
 
-    async def handle_sse(scope, receive, send):
-        """Raw ASGI handler for SSE connection."""
-        async with transport.connect_sse(scope, receive, send) as streams:
-            await mcp._mcp_server.run(
-                streams[0], streams[1], mcp._mcp_server.create_initialization_options()
-            )
+    # Get the MCP ASGI app via FastMCP's built-in http_app()
+    # This handles the /mcp endpoint with Streamable HTTP transport
+    mcp_asgi_app = mcp.http_app(path="/mcp")
 
-    async def sse_app(scope, receive, send):
-        """Wrapper that only handles GET requests to /sse."""
-        if scope["type"] == "http":
-            await handle_sse(scope, receive, send)
-
-    return Starlette(
+    # Build the combined Starlette app
+    app = Starlette(
         routes=[
             Route("/", endpoint=health_check),
             Route("/health", endpoint=health_check),
             Route("/tasks", endpoint=tasks_api, methods=["GET"]),
             Route("/tasks", endpoint=tasks_options, methods=["OPTIONS"]),
-            Mount("/sse", app=sse_app),
-            Mount("/messages/", app=transport.handle_post_message),
-        ]
+            # Mount the MCP Streamable HTTP app at root so /mcp works
+            Mount("/", app=mcp_asgi_app),
+        ],
+        middleware=[
+            Middleware(
+                CORSMiddleware,
+                allow_origins=["*"],
+                allow_methods=["*"],
+                allow_headers=["*"],
+            ),
+        ],
     )
+
+    return app
 
 
 if __name__ == "__main__":
     print(f"🚀 DevFlow MCP Server starting on port {PORT}")
     print(f"📁 Working directory: {WORK_DIR}")
-    print(f"🔗 SSE endpoint: http://0.0.0.0:{PORT}/sse")
+    print(f"🔗 MCP endpoint: http://0.0.0.0:{PORT}/mcp")
     print(f"💚 Health check: http://0.0.0.0:{PORT}/health")
 
     app = create_app()
