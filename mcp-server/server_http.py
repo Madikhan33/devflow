@@ -129,10 +129,9 @@ async def tasks_options(request):
 def create_app():
     transport = SseServerTransport("/messages/")
 
-    async def handle_sse(request):
-        async with transport.connect_sse(
-            request.scope, request.receive, request._send
-        ) as streams:
+    async def handle_sse(scope, receive, send):
+        """Raw ASGI handler for SSE — avoids request._send issues."""
+        async with transport.connect_sse(scope, receive, send) as streams:
             await mcp._mcp_server.run(
                 streams[0], streams[1], mcp._mcp_server.create_initialization_options()
             )
@@ -143,7 +142,7 @@ def create_app():
             Route("/health", endpoint=health_check),
             Route("/tasks", endpoint=tasks_api, methods=["GET"]),
             Route("/tasks", endpoint=tasks_options, methods=["OPTIONS"]),
-            Route("/sse", endpoint=handle_sse),
+            Mount("/sse", app=handle_sse),
             Mount("/messages/", app=transport.handle_post_message),
         ]
     )
